@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Irish Mortgage Calculator</title>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --page:           #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --series-1:       #2a78d6;  /* principal / balance / gains */
+    --series-2:       #eb6834;  /* interest / wasted money */
+    --good:           #006300;  /* success text token */
+    --bad:            #d03b3b;  /* critical */
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page:           #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --series-1:       #3987e5;
+      --series-2:       #d95926;
+      --good:           #0ca30c;
+      --bad:            #d03b3b;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-1:      #1a1a19;
+    --page:           #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --gridline:       #2c2c2a;
+    --baseline:       #383835;
+    --border:         rgba(255,255,255,0.10);
+    --series-1:       #3987e5;
+    --series-2:       #d95926;
+    --good:           #0ca30c;
+    --bad:            #d03b3b;
+  }
+
+  * { box-sizing: border-box; }
+  body.viz-root {
+    margin: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 24px 20px 48px; }
+
+  /* side-by-side sections */
+  .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; align-items: start; }
+  .col > .section-title:first-child { margin-top: 0; }
+  @media (max-width: 920px) { .columns { grid-template-columns: 1fr; } }
+  .divider { border: none; border-top: 1px solid var(--baseline); margin: 36px 0 4px; }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+  h1 { font-size: 20px; font-weight: 650; margin: 0; }
+  .subtitle { color: var(--text-secondary); margin: 2px 0 20px; }
+  #themeBtn {
+    background: var(--surface-1); color: var(--text-secondary);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer;
+  }
+
+  .section-title { font-size: 16px; font-weight: 650; margin: 26px 0 4px; }
+  .section-sub { font-size: 12.5px; color: var(--text-secondary); margin: 0 0 12px; }
+
+  .card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
+  }
+
+  /* inputs */
+  .inputs { display: flex; flex-wrap: wrap; gap: 14px 22px; }
+  .group-label { width: 100%; font-size: 12px; font-weight: 650; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: -6px; }
+  .group-label:not(:first-child) { margin-top: 8px; }
+  .field { display: flex; flex-direction: column; gap: 3px; }
+  .field label { font-size: 12px; color: var(--text-secondary); }
+  .field input {
+    background: var(--page); color: var(--text-primary);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 9px; font: inherit; width: 120px;
+    font-variant-numeric: tabular-nums;
+  }
+  .field input:focus { outline: 2px solid var(--series-1); outline-offset: 0; }
+  .field input:disabled { color: var(--text-muted); background: transparent; cursor: not-allowed; }
+  .field .unit { font-size: 11px; color: var(--text-muted); max-width: 220px; }
+  .derived { width: 100%; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--gridline); font-size: 12.5px; color: var(--text-secondary); }
+  .derived strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+  .derived .warn { color: var(--bad); font-weight: 600; }
+
+  /* KPI tiles */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+  .tile .label { font-size: 12px; color: var(--text-secondary); }
+  .tile .value { font-size: 24px; font-weight: 600; margin-top: 2px; }
+  .tile .value.pos { color: var(--good); }
+  .tile .value.neg { color: var(--bad); }
+  .tile .sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+  /* comparison */
+  .verdict { font-size: 18px; font-weight: 650; margin-bottom: 12px; }
+  .verdict .amt { font-variant-numeric: tabular-nums; }
+  #compareCard td.pos { color: var(--good); font-weight: 600; }
+  #compareCard td.neg { color: var(--bad); font-weight: 600; }
+  .compare-note { font-size: 12px; color: var(--text-muted); margin-top: 10px; }
+  .outlay {
+    margin-top: 14px; padding: 10px 14px;
+    border-left: 3px solid var(--series-1);
+    background: var(--page);
+    border-radius: 0 8px 8px 0;
+  }
+  .outlay .label { font-size: 12px; color: var(--text-secondary); }
+  .outlay .big { font-size: 16px; font-weight: 650; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .outlay .why { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .compare-warn { font-size: 12.5px; color: var(--bad); font-weight: 600; margin-bottom: 8px; }
+
+  /* month inspector */
+  .inspector-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+  .inspector-head h2 { font-size: 15px; font-weight: 650; margin: 0; }
+  .inspector-head input[type="number"] {
+    width: 80px; background: var(--page); color: var(--text-primary);
+    border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; font: inherit;
+    font-variant-numeric: tabular-nums;
+  }
+  .inspector-head input[type="range"] { flex: 1; min-width: 160px; accent-color: var(--series-1); }
+  .inspector-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 18px; }
+  .mini .label { font-size: 12px; color: var(--text-secondary); }
+  .mini .value { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .mini .value .key { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; }
+
+  /* charts */
+  .chart-card h2 { font-size: 15px; font-weight: 650; margin: 0 0 2px; }
+  .chart-card .desc { font-size: 12px; color: var(--text-secondary); margin: 0 0 8px; }
+  .legend { display: flex; gap: 18px; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+  .legend .item { display: flex; align-items: center; gap: 6px; }
+  .legend .line-key { width: 16px; height: 0; border-top: 3px solid; border-radius: 2px; }
+  .chart-holder { position: relative; }
+  .chart-holder svg { display: block; width: 100%; height: auto; }
+  .tooltip {
+    position: absolute; pointer-events: none; display: none;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+    min-width: 170px; z-index: 5;
+  }
+  .tooltip .tt-title { color: var(--text-secondary); margin-bottom: 4px; }
+  .tooltip .tt-row { display: flex; align-items: center; gap: 7px; margin-top: 2px; }
+  .tooltip .tt-key { width: 12px; border-top: 3px solid; border-radius: 2px; }
+  .tooltip .tt-val { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tooltip .tt-name { color: var(--text-secondary); }
+
+  /* table */
+  .table-card h2 { font-size: 15px; font-weight: 650; margin: 0; }
+  .table-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .table-head button {
+    background: var(--page); color: var(--text-secondary); border: 1px solid var(--border);
+    border-radius: 8px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer;
+  }
+  .table-scroll { overflow-x: auto; max-height: 420px; overflow-y: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--gridline); font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--text-secondary); font-weight: 600; position: sticky; top: 0; background: var(--surface-1); }
+  tr.fixed-end td { border-bottom: 2px solid var(--baseline); }
+
+  .notes { font-size: 12px; color: var(--text-muted); }
+  .notes li { margin-bottom: 3px; }
+</style>
+</head>
+<body class="viz-root">
+<div class="wrap">
+  <header>
+    <h1>Irish Property Calculator</h1>
+    <button id="themeBtn" type="button">Theme: auto</button>
+  </header>
+  <p class="subtitle">Should you buy a home, or keep renting and invest the deposit? Model both side by side.</p>
+
+  <div class="columns">
+  <div class="col">
+  <div class="section-title">Section 1: buy, hold, sell after X years</div>
+  <p class="section-sub">Buy a home with a mortgage, live in it, sell later: what you gain, what you burn.</p>
+
+  <div class="card">
+    <div class="inputs">
+      <div class="group-label">Property &amp; sale</div>
+      <div class="field">
+        <label for="inValue">Property price (€)</label>
+        <input id="inValue" type="number" value="600000" step="5000" min="50000">
+      </div>
+      <div class="field">
+        <label for="inAppr">Appreciation (% per year)</label>
+        <input id="inAppr" type="number" value="4" step="0.5" min="-10" max="20">
+        <span class="unit">Dublin apartments were +6.8% y/y in Jul 2026 but slowing; 3–5% is a reasonable planning range</span>
+      </div>
+      <div class="field">
+        <label for="inSellYears">Sell after (years)</label>
+        <input id="inSellYears" type="number" value="5" step="1" min="1">
+      </div>
+      <div class="field">
+        <label for="inCosts">One-off costs (€)</label>
+        <input id="inCosts" type="number" value="20000" step="500" min="0">
+        <span class="unit">stamp duty (1%), solicitor, survey, valuation; add ~2% of sale price if you want selling fees counted too</span>
+      </div>
+      <div class="field">
+        <label for="inRent">Extra monthly income (€)</label>
+        <input id="inRent" type="number" value="1150" step="50" min="0">
+        <span class="unit">e.g. renting out a room; tax-free up to €14,000/yr (≈€1,166/mo) under rent-a-room relief in your primary residence</span>
+      </div>
+      <div class="field">
+        <label for="inOwnCost">Running costs (€/year)</label>
+        <input id="inOwnCost" type="number" value="4000" step="250" min="0">
+        <span class="unit">management fees (~€2,500 for a Dublin apartment) + LPT (~€500) + home &amp; mortgage-protection insurance (~€750) + upkeep</span>
+      </div>
+      <div class="group-label">Mortgage</div>
+      <div class="field">
+        <label for="inLoan">Loan amount (€)</label>
+        <input id="inLoan" type="number" value="520000" step="1000" min="10000">
+      </div>
+      <div class="field">
+        <label for="inTerm">Term (years)</label>
+        <input id="inTerm" type="number" value="20" step="1" min="5" max="35">
+      </div>
+      <div class="field">
+        <label for="inRate">Fixed rate (% p.a.)</label>
+        <input id="inRate" type="number" value="3.15" step="0.05" min="0.1">
+      </div>
+      <div class="field">
+        <label for="inFixedYears">Fixed period (years)</label>
+        <input id="inFixedYears" type="number" value="4" step="1" min="0">
+      </div>
+      <div class="field">
+        <label for="inFollowRate">Rate after fixed (% p.a.)</label>
+        <input id="inFollowRate" type="number" value="4.15" step="0.05" min="0.1">
+        <span class="unit">what you re-fix / roll to (unknown today, try scenarios)</span>
+      </div>
+      <div class="derived" id="derived"></div>
+    </div>
+  </div>
+  </div><!-- /col -->
+
+  <div class="col">
+  <div class="section-title">Section 2: keep renting and invest instead</div>
+  <p class="section-sub">You stay in your rented apartment; the would-be deposit, plus a monthly amount, goes into an investment. Completely independent of Section 1.</p>
+
+  <div class="card">
+    <div class="inputs">
+      <div class="field">
+        <label for="inRent2">Your monthly rent (€)</label>
+        <input id="inRent2" type="number" value="1362" step="50" min="0">
+      </div>
+      <div class="field">
+        <label for="inCredit">Renter's tax credit (€/year)</label>
+        <input id="inCredit" type="number" value="1000" disabled>
+        <span class="unit">Rent Tax Credit, fixed at €1,000/yr per renter; claimed back from Revenue</span>
+      </div>
+      <div class="field">
+        <label for="inInvest">Money invested (€)</label>
+        <input id="inInvest" type="number" value="60000" step="1000" min="0">
+        <span class="unit">the deposit you would otherwise put down; add one-off costs if you like</span>
+      </div>
+      <div class="field">
+        <label for="inMonthly">Monthly invested (€)</label>
+        <input id="inMonthly" type="number" value="830" step="10" min="0">
+        <span class="unit">what you save each month while renting (e.g. the monthly-outlay gap vs buying), invested at the same return rate</span>
+      </div>
+      <div class="field">
+        <label for="inReturn">Return (% per year)</label>
+        <input id="inReturn" type="number" value="8" step="0.5" min="0" max="20">
+        <span class="unit">Irish deposits: ~2.5–3.55% AER (Sep 2026); global equity ETFs: ~7%/yr long-run average</span>
+      </div>
+      <div class="field">
+        <label for="inCgt">Tax on gains (%)</label>
+        <input id="inCgt" type="number" value="33" step="1" min="0" max="60">
+        <span class="unit">33% CGT on shares (first €1,270/yr of gains exempt) · 38% exit tax on ETFs/funds · 33% DIRT on deposit interest</span>
+      </div>
+      <div class="field">
+        <label for="inHorizon">Horizon (years)</label>
+        <input id="inHorizon" type="number" value="5" step="1" min="1" max="40">
+        <span class="unit">match "sell after" in Section 1 for a fair comparison</span>
+      </div>
+    </div>
+  </div>
+  </div><!-- /col -->
+  </div><!-- /columns -->
+
+  <div class="columns">
+  <div class="col">
+  <div class="section-title">If you sell after <span id="sellYearsEcho">5</span> years</div>
+  <p class="section-sub">Net result = appreciation + rental income − interest paid − one-off costs − running costs. Deposit and principal repayments come back to you in the sale price, so they are not "spent".</p>
+  <div class="kpis" id="saleKpis"></div>
+  </div><!-- /col -->
+
+  <div class="col">
+  <div class="section-title">If you cash out after <span id="horizonEcho">5</span> years</div>
+  <p class="section-sub">Net result = after-tax investment gains + renter's credit − rent paid. Your lump sum and monthly contributions come back to you, so they are not "spent".</p>
+  <div class="kpis" id="investKpis"></div>
+  </div><!-- /col -->
+  </div><!-- /columns -->
+
+  <div class="columns">
+  <div class="col">
+  <div class="card chart-card">
+    <h2>Value gained vs money wasted</h2>
+    <p class="desc">You come out ahead once the blue line (appreciation + rental income) crosses above the orange line (interest + one-off costs + running costs). Hover for the net position at any month.</p>
+    <div class="legend">
+      <span class="item"><span class="line-key" style="border-color: var(--series-1)"></span>Appreciation + rental income</span>
+      <span class="item"><span class="line-key" style="border-color: var(--series-2)"></span>Money wasted (interest + all costs)</span>
+    </div>
+    <div class="chart-holder" id="chartSale"></div>
+  </div>
+  </div><!-- /col -->
+
+  <div class="col">
+  <div class="card chart-card">
+    <h2>After-tax investment gains vs rent paid</h2>
+    <p class="desc">What the lump sum plus monthly contributions earn you (after tax, if cashed out at that point) against the rent leaving your pocket, net of the renter's tax credit.</p>
+    <div class="legend">
+      <span class="item"><span class="line-key" style="border-color: var(--series-1)"></span>After-tax investment gains</span>
+      <span class="item"><span class="line-key" style="border-color: var(--series-2)"></span>Rent paid (net of credit)</span>
+    </div>
+    <div class="chart-holder" id="chartInvest"></div>
+  </div>
+  </div><!-- /col -->
+  </div><!-- /columns -->
+
+  <div class="section-title">Buy vs rent: head to head</div>
+  <p class="section-sub">Both columns measure the same thing: how much richer or poorer you are at the end, versus doing nothing.</p>
+  <div class="card" id="compareCard"></div>
+
+  <hr class="divider">
+
+  <div class="section-title">The mortgage itself</div>
+  <p class="section-sub">Extra detail on the Section 1 loan: amortisation independent of the sale decision.</p>
+  <div class="kpis" id="kpis"></div>
+
+  <div class="card">
+    <div class="inspector-head">
+      <h2>Position after month</h2>
+      <input id="inMonth" type="number" value="48" min="1">
+      <input id="inMonthRange" type="range" value="48" min="1">
+      <span id="monthAsYears" style="color: var(--text-muted); font-size: 12px;"></span>
+    </div>
+    <div class="inspector-grid" id="inspector"></div>
+  </div>
+
+  <div class="card chart-card">
+    <h2>Where each monthly payment goes</h2>
+    <p class="desc">Split of every payment between principal and interest over the life of the loan.</p>
+    <div class="legend">
+      <span class="item"><span class="line-key" style="border-color: var(--series-1)"></span>Principal portion</span>
+      <span class="item"><span class="line-key" style="border-color: var(--series-2)"></span>Interest portion</span>
+    </div>
+    <div class="chart-holder" id="chartSplit"></div>
+  </div>
+
+  <div class="card chart-card">
+    <h2>Balance and total interest over time</h2>
+    <p class="desc">Remaining loan balance falling, cumulative interest paid rising.</p>
+    <div class="legend">
+      <span class="item"><span class="line-key" style="border-color: var(--series-1)"></span>Remaining balance</span>
+      <span class="item"><span class="line-key" style="border-color: var(--series-2)"></span>Cumulative interest paid</span>
+    </div>
+    <div class="chart-holder" id="chartCum"></div>
+  </div>
+
+  <div class="card table-card">
+    <div class="table-head">
+      <h2>Amortisation schedule</h2>
+      <button id="granBtn" type="button">Show monthly</button>
+    </div>
+    <div class="table-scroll">
+      <table id="schedTable"></table>
+    </div>
+  </div>
+
+  <div class="card">
+    <ul class="notes">
+      <li>Interest is computed monthly on the reducing balance (Irish lenders accrue daily and charge monthly; the difference is a few euro a month).</li>
+      <li>When the fixed period ends, the monthly payment is recalculated on the remaining balance over the remaining term at the follow-on rate.</li>
+      <li>Selling inside a fixed-rate period can trigger a break fee (BOI charges it only if wholesale rates have fallen since you fixed); not modelled.</li>
+      <li>No capital gains tax applies when selling your principal private residence in Ireland.</li>
+      <li>Extra monthly income is treated as fixed and tax-free; rent-a-room relief covers up to €14,000/yr in your primary residence, but the full amount becomes taxable if you exceed the threshold.</li>
+      <li>Section 2 taxes all gains at the flat rate you enter; the €1,270/yr CGT exemption on shares and the 8-year deemed-disposal rule on ETFs are not modelled. No capital gains tax applies in Section 1 since it is your principal private residence.</li>
+      <li>Rent in Section 2 is held flat (RPZ rules cap in-tenancy increases at ~2%/yr); rising rent would favour buying.</li>
+      <li>Monthly invested amounts are end-of-month contributions compounding at the monthly equivalent of the annual return; the contributions themselves come back when you cash out, so only their after-tax gains move the net result.</li>
+      <li>Running costs cover management fees, LPT, and insurances as a flat annual figure; large one-off repairs, room-vacancy gaps, and mortgage overpayments are not modelled.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+// ---------- finance ----------
+function annuityPayment(principal, annualRatePct, months) {
+  const r = annualRatePct / 100 / 12;
+  if (r === 0) return principal / months;
+  return principal * r / (1 - Math.pow(1 + r, -months));
+}
+
+// Schedule: fixed rate for fixedMonths, then payment recalculated at followRate
+// on the remaining balance over the remaining term.
+function buildSchedule(loan, termMonths, fixedRatePct, fixedMonths, followRatePct) {
+  fixedMonths = Math.min(fixedMonths, termMonths);
+  const fixedPayment = annuityPayment(loan, fixedRatePct, termMonths);
+  const rows = [];
+  let bal = loan, cumI = 0, cumP = 0;
+  let payment = fixedPayment, rate = fixedRatePct;
+  let followPayment = null;
+  for (let m = 1; m <= termMonths; m++) {
+    if (m === fixedMonths + 1 && fixedMonths < termMonths) {
+      rate = followRatePct;
+      payment = annuityPayment(bal, followRatePct, termMonths - fixedMonths);
+      followPayment = payment;
+    }
+    let interest = bal * rate / 100 / 12;
+    let principal = payment - interest;
+    if (principal > bal) principal = bal; // final-month rounding
+    bal -= principal;
+    cumI += interest;
+    cumP += principal;
+    rows.push({ m, payment: interest + principal, interest, principal, cumI, cumP, bal });
+  }
+  return { rows, fixedPayment, followPayment: followPayment ?? fixedPayment };
+}
+
+// ---------- formatting ----------
+const fmtEUR0 = new Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+const eur = v => fmtEUR0.format(v);
+function eurCompact(v) {
+  if (Math.abs(v) >= 1000) return "€" + (v / 1000).toFixed(0) + "K";
+  return "€" + v.toFixed(0);
+}
+function monthLabel(m) {
+  const y = Math.floor((m - 1) / 12) + 1;
+  const mo = ((m - 1) % 12) + 1;
+  return "Month " + m + " (year " + y + ", month " + mo + ")";
+}
+
+// ---------- state ----------
+let sched = null;
+
+function readInputs() {
+  const value = Math.max(1, +document.getElementById("inValue").value || 600000);
+  const appr = +document.getElementById("inAppr").value || 0;
+  const costs = Math.max(0, +document.getElementById("inCosts").value || 0);
+  const rent = Math.max(0, +document.getElementById("inRent").value || 0);
+  const ownCost = Math.max(0, +document.getElementById("inOwnCost").value || 0);
+  const loan = Math.max(1, +document.getElementById("inLoan").value || 520000);
+  const termY = Math.min(40, Math.max(1, +document.getElementById("inTerm").value || 20));
+  const rate = Math.max(0.01, +document.getElementById("inRate").value || 3.15);
+  const fixedY = Math.max(0, +document.getElementById("inFixedYears").value || 0);
+  const follow = Math.max(0.01, +document.getElementById("inFollowRate").value || rate);
+  let sellY = Math.max(1, +document.getElementById("inSellYears").value || 5);
+  sellY = Math.min(sellY, termY); // schedule only spans the term
+  return { value, appr, costs, rent, ownCost, sellMonths: Math.round(sellY * 12), sellYears: sellY,
+           loan, termMonths: Math.round(termY * 12), rate, fixedMonths: Math.round(fixedY * 12), follow };
+}
+
+// value gained by month m (property appreciation over purchase price)
+function appreciationAt(m) {
+  const p = sched.params;
+  return p.value * (Math.pow(1 + p.appr / 100, m / 12) - 1);
+}
+
+function recalcAll() {
+  const p = readInputs();
+  sched = buildSchedule(p.loan, p.termMonths, p.rate, p.fixedMonths, p.follow);
+  sched.params = p;
+
+  const inMonth = document.getElementById("inMonth");
+  const inRange = document.getElementById("inMonthRange");
+  inMonth.max = p.termMonths; inRange.max = p.termMonths;
+  if (+inMonth.value > p.termMonths) { inMonth.value = p.termMonths; inRange.value = p.termMonths; }
+  const inSell = document.getElementById("inSellYears");
+  inSell.max = Math.round(p.termMonths / 12);
+  document.getElementById("sellYearsEcho").textContent = p.sellYears;
+
+  renderDerived();
+  renderSaleKpis();
+  renderSaleChart();
+  renderKpis();
+  renderInspector();
+  renderSplitChart();
+  renderCumChart();
+  renderTable();
+  renderComparison();
+}
+
+// ---------- derived line (deposit / LTV) ----------
+function renderDerived() {
+  const p = sched.params;
+  const deposit = p.value - p.loan;
+  const ltv = p.loan / p.value * 100;
+  const el = document.getElementById("derived");
+  el.replaceChildren();
+  const add = (text, strong, cls) => {
+    const s = document.createElement(strong ? "strong" : "span");
+    if (cls) s.className = cls;
+    s.textContent = text;
+    el.appendChild(s);
+  };
+  add("Deposit needed: "); add(eur(deposit), true);
+  add("   ·   LTV: "); add(ltv.toFixed(1) + "%", true);
+  if (ltv > 90) add("  ⚠ above the 90% Central Bank cap for first-time buyers", false, "warn");
+  else if (deposit < 0) add("  ⚠ loan exceeds price", false, "warn");
+}
+
+// ---------- sale KPIs ----------
+function renderSaleKpis() {
+  const p = sched.params;
+  const S = p.sellMonths;
+  const r = sched.rows[S - 1];
+  const salePrice = p.value * Math.pow(1 + p.appr / 100, S / 12);
+  const deposit = p.value - p.loan;
+  const paymentsTotal = r.cumI + r.cumP;
+  const ownPaid = p.ownCost * S / 12;
+  const cashIn = deposit + paymentsTotal + p.costs + ownPaid;
+  const walkAway = salePrice - r.bal;
+  const rentTotal = p.rent * S;
+  const netProfit = walkAway + rentTotal - cashIn; // = appreciation + rent − interest − costs − running
+  const wasted = r.cumI + p.costs + ownPaid - rentTotal;
+
+  // break-even: first month where appreciation + rent ≥ interest-to-date + all costs
+  let breakEven = null;
+  for (const row of sched.rows) {
+    if (appreciationAt(row.m) + p.rent * row.m >= row.cumI + p.costs + p.ownCost * row.m / 12) { breakEven = row.m; break; }
+  }
+
+  const tiles = [
+    { label: "Estimated sale price", value: eur(salePrice), sub: p.appr.toFixed(1) + "%/yr for " + p.sellYears + " yrs" },
+    { label: "Mortgage left to clear", value: eur(r.bal), sub: "after " + S + " payments" },
+    { label: "Cash you walk away with", value: eur(walkAway), sub: "sale price minus mortgage balance" },
+    { label: "Rental income received", value: eur(rentTotal), sub: eur(p.rent) + "/mo × " + S + " months" },
+    { label: "Total cash you put in", value: eur(cashIn), sub: "deposit " + eur(deposit) + " + payments " + eur(paymentsTotal) + " + costs " + eur(p.costs) + " + running " + eur(ownPaid) },
+    { label: "Money wasted (not coming back)",
+      value: wasted > 0 ? eur(wasted) : "€0",
+      sub: wasted > 0
+        ? "interest " + eur(r.cumI) + " + costs " + eur(p.costs) + " + running " + eur(ownPaid) + " − rent " + eur(rentTotal)
+        : "rental income fully covers interest + all costs (surplus " + eur(-wasted) + ")" },
+    { label: "Break-even point", value: breakEven ? "Year " + (breakEven / 12).toFixed(1) : "not within term",
+      sub: "when appreciation + rent overtakes interest + all costs" },
+    { label: "Net result", value: (netProfit >= 0 ? "▲ " : "▼ ") + eur(Math.abs(netProfit)),
+      cls: netProfit >= 0 ? "pos" : "neg",
+      sub: (netProfit >= 0 ? "profit" : "loss") + ", " + (Math.abs(netProfit) / cashIn * 100).toFixed(1) + "% of cash put in" },
+  ];
+  const holder = document.getElementById("saleKpis");
+  holder.replaceChildren();
+  for (const t of tiles) {
+    const el = document.createElement("div"); el.className = "tile";
+    const l = document.createElement("div"); l.className = "label"; l.textContent = t.label;
+    const v = document.createElement("div"); v.className = "value" + (t.cls ? " " + t.cls : ""); v.textContent = t.value;
+    const s = document.createElement("div"); s.className = "sub"; s.textContent = t.sub;
+    el.append(l, v, s); holder.appendChild(el);
+  }
+}
+
+// ---------- mortgage KPI tiles ----------
+function renderKpis() {
+  const { rows, fixedPayment, followPayment, params } = sched;
+  const last = rows[rows.length - 1];
+  const fm = Math.min(params.fixedMonths, params.termMonths);
+  const atFixedEnd = fm > 0 ? rows[fm - 1] : null;
+  const tiles = [
+    { label: "Monthly payment (fixed period)", value: eur(fixedPayment), sub: params.rate.toFixed(2) + "% for " + (fm / 12) + " yrs" },
+    { label: "Payment after fixed ends", value: eur(followPayment), sub: "at " + params.follow.toFixed(2) + "% on remaining balance" },
+    { label: "Total interest over full term", value: eur(last.cumI), sub: ((last.cumI / params.loan) * 100).toFixed(1) + "% of the loan" },
+    { label: "Interest paid during fixed period", value: atFixedEnd ? eur(atFixedEnd.cumI) : "—", sub: atFixedEnd ? "principal repaid: " + eur(atFixedEnd.cumP) : "" },
+    { label: "Balance when fixed ends", value: atFixedEnd ? eur(atFixedEnd.bal) : "—", sub: atFixedEnd ? "after " + fm + " payments" : "" },
+  ];
+  const holder = document.getElementById("kpis");
+  holder.replaceChildren();
+  for (const t of tiles) {
+    const el = document.createElement("div"); el.className = "tile";
+    const l = document.createElement("div"); l.className = "label"; l.textContent = t.label;
+    const v = document.createElement("div"); v.className = "value"; v.textContent = t.value;
+    const s = document.createElement("div"); s.className = "sub"; s.textContent = t.sub;
+    el.append(l, v, s); holder.appendChild(el);
+  }
+}
+
+// ---------- inspector ----------
+function renderInspector() {
+  const m = Math.min(Math.max(1, +document.getElementById("inMonth").value || 1), sched.rows.length);
+  const r = sched.rows[m - 1];
+  document.getElementById("monthAsYears").textContent = "= " + (m / 12).toFixed(1) + " years in";
+  const css = getComputedStyle(document.body);
+  const c1 = css.getPropertyValue("--series-1").trim();
+  const c2 = css.getPropertyValue("--series-2").trim();
+  const items = [
+    { label: "Payment that month", value: eur(r.payment) },
+    { label: "→ to principal", value: eur(r.principal), key: c1 },
+    { label: "→ to interest", value: eur(r.interest), key: c2 },
+    { label: "Total interest paid so far", value: eur(r.cumI), key: c2 },
+    { label: "Total principal repaid so far", value: eur(r.cumP), key: c1 },
+    { label: "Remaining balance", value: eur(r.bal) },
+    { label: "Loan repaid", value: ((r.cumP / sched.params.loan) * 100).toFixed(1) + "%" },
+  ];
+  const holder = document.getElementById("inspector");
+  holder.replaceChildren();
+  for (const it of items) {
+    const el = document.createElement("div"); el.className = "mini";
+    const l = document.createElement("div"); l.className = "label"; l.textContent = it.label;
+    const v = document.createElement("div"); v.className = "value";
+    if (it.key) { const k = document.createElement("span"); k.className = "key"; k.style.background = it.key; v.appendChild(k); }
+    v.appendChild(document.createTextNode(it.value));
+    el.append(l, v); holder.appendChild(el);
+  }
+}
+
+// ---------- charting (shared SVG line-chart builder) ----------
+const NS = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs) {
+  const el = document.createElementNS(NS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+function niceTicks(maxV, count) {
+  const raw = maxV / count;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map(s => s * mag).find(s => s >= raw) || 10 * mag;
+  const ticks = [];
+  for (let v = 0; v <= maxV + 1e-9; v += step) ticks.push(v);
+  return ticks;
+}
+
+// series: [{name, color, values, area?, endLabel}], values indexed by month-1
+// opts: {aria, marks: [{m, label}], extraRow?: m => {name, value}}
+function drawLineChart(holderId, series, opts) {
+  const holder = document.getElementById(holderId);
+  holder.replaceChildren();
+  const W = opts.w || 940, H = 320, mL = 58, mR = 120, mT = 14, mB = 30;
+  const iw = W - mL - mR, ih = H - mT - mB;
+  const n = series[0].values.length;
+  const maxV = Math.max(...series.flatMap(s => s.values)) * 1.05;
+  const x = m => mL + (m - 1) / (n - 1) * iw;   // m is 1-based month
+  const y = v => mT + ih - v / maxV * ih;
+
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": opts.aria });
+
+  // gridlines + y ticks
+  const ticks = niceTicks(maxV, 5);
+  for (const t of ticks) {
+    svg.appendChild(svgEl("line", { x1: mL, x2: W - mR, y1: y(t), y2: y(t), stroke: "var(--gridline)", "stroke-width": 1 }));
+    const lab = svgEl("text", { x: mL - 8, y: y(t) + 4, "text-anchor": "end", "font-size": 11, fill: "var(--text-muted)" });
+    lab.textContent = eurCompact(t);
+    svg.appendChild(lab);
+  }
+  // x axis: year marks
+  const termYears = n / 12;
+  const yearStep = termYears > 24 ? 5 : termYears > 12 ? (iw < 500 ? 4 : 2) : 1;
+  for (let yr = 0; yr <= termYears; yr += yearStep) {
+    const m = Math.max(1, yr * 12);
+    const lab = svgEl("text", { x: x(m), y: H - 8, "text-anchor": "middle", "font-size": 11, fill: "var(--text-muted)" });
+    lab.textContent = yr === 0 ? "start" : "yr " + yr;
+    svg.appendChild(lab);
+  }
+  // baseline
+  svg.appendChild(svgEl("line", { x1: mL, x2: W - mR, y1: y(0), y2: y(0), stroke: "var(--baseline)", "stroke-width": 1 }));
+
+  // vertical event markers (fixed-rate end, sale, ...)
+  (opts.marks || []).forEach((mk, i) => {
+    if (mk.m <= 0 || mk.m >= n) return;
+    svg.appendChild(svgEl("line", { x1: x(mk.m), x2: x(mk.m), y1: mT, y2: mT + ih, stroke: "var(--baseline)", "stroke-width": 1 }));
+    const lab = svgEl("text", { x: x(mk.m) + 5, y: mT + 12 + i * 14, "font-size": 11, fill: "var(--text-muted)" });
+    lab.textContent = mk.label;
+    svg.appendChild(lab);
+  });
+
+  // series lines (+ optional area wash)
+  for (const s of series) {
+    const pts = s.values.map((v, i) => `${x(i + 1).toFixed(1)},${y(v).toFixed(1)}`);
+    if (s.area) {
+      const path = svgEl("path", {
+        d: `M ${x(1)},${y(0)} L ${pts.join(" L ")} L ${x(n)},${y(0)} Z`,
+        fill: s.color, opacity: 0.1
+      });
+      svg.appendChild(path);
+    }
+    svg.appendChild(svgEl("path", {
+      d: "M " + pts.join(" L "), fill: "none", stroke: s.color,
+      "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round"
+    }));
+  }
+
+  // direct end labels (value at line end), collision-nudged with leader offsets
+  const ends = series.map(s => ({ s, yv: y(s.values[n - 1]) })).sort((a, b) => a.yv - b.yv);
+  let lastY = -Infinity;
+  for (const e of ends) {
+    let ty = Math.max(e.yv, lastY + 14);
+    ty = Math.min(ty, mT + ih);
+    lastY = ty;
+    const lab = svgEl("text", { x: W - mR + 8, y: ty + 4, "font-size": 11.5, fill: "var(--text-secondary)" });
+    lab.textContent = e.s.endLabel;
+    svg.appendChild(lab);
+    svg.appendChild(svgEl("line", { x1: W - mR + 1, x2: W - mR + 6, y1: e.yv, y2: ty, stroke: e.s.color, "stroke-width": 2 }));
+  }
+
+  // hover layer: crosshair + markers + tooltip
+  const cross = svgEl("line", { x1: 0, x2: 0, y1: mT, y2: mT + ih, stroke: "var(--text-muted)", "stroke-width": 1, visibility: "hidden" });
+  svg.appendChild(cross);
+  const markers = series.map(s => {
+    const g = svgEl("g", { visibility: "hidden" });
+    g.appendChild(svgEl("circle", { r: 6, fill: "var(--surface-1)" }));   // surface ring
+    g.appendChild(svgEl("circle", { r: 4, fill: s.color }));
+    svg.appendChild(g);
+    return g;
+  });
+
+  const tip = document.createElement("div"); tip.className = "tooltip";
+  holder.append(svg, tip);
+
+  function showAt(clientX) {
+    const rect = svg.getBoundingClientRect();
+    const sx = (clientX - rect.left) / rect.width * W;
+    let m = Math.round((sx - mL) / iw * (n - 1)) + 1;
+    m = Math.min(Math.max(1, m), n);
+    const px = x(m);
+    cross.setAttribute("x1", px); cross.setAttribute("x2", px);
+    cross.setAttribute("visibility", "visible");
+    series.forEach((s, i) => {
+      markers[i].setAttribute("transform", `translate(${px},${y(s.values[m - 1])})`);
+      markers[i].setAttribute("visibility", "visible");
+    });
+    tip.replaceChildren();
+    const title = document.createElement("div"); title.className = "tt-title";
+    title.textContent = monthLabel(m);
+    tip.appendChild(title);
+    for (const s of series) {
+      const row = document.createElement("div"); row.className = "tt-row";
+      const key = document.createElement("span"); key.className = "tt-key"; key.style.borderColor = s.color;
+      const val = document.createElement("span"); val.className = "tt-val"; val.textContent = eur(s.values[m - 1]);
+      const name = document.createElement("span"); name.className = "tt-name"; name.textContent = s.name;
+      row.append(key, val, name); tip.appendChild(row);
+    }
+    if (opts.extraRow) {
+      const ex = opts.extraRow(m);
+      const row = document.createElement("div"); row.className = "tt-row";
+      const key = document.createElement("span"); key.className = "tt-key"; key.style.borderColor = "transparent";
+      const val = document.createElement("span"); val.className = "tt-val"; val.textContent = ex.value;
+      const name = document.createElement("span"); name.className = "tt-name"; name.textContent = ex.name;
+      row.append(key, val, name); tip.appendChild(row);
+    }
+    tip.style.display = "block";
+    const hRect = holder.getBoundingClientRect();
+    let left = (px / W) * hRect.width + 14;
+    if (left + tip.offsetWidth > hRect.width - 4) left = (px / W) * hRect.width - tip.offsetWidth - 14;
+    tip.style.left = left + "px";
+    tip.style.top = "18px";
+  }
+  function hide() {
+    cross.setAttribute("visibility", "hidden");
+    markers.forEach(g => g.setAttribute("visibility", "hidden"));
+    tip.style.display = "none";
+  }
+  svg.addEventListener("pointermove", e => showAt(e.clientX));
+  svg.addEventListener("pointerleave", hide);
+  svg.setAttribute("tabindex", "0");
+  let focusMonth = 1;
+  svg.addEventListener("keydown", e => {
+    if (e.key === "ArrowRight") focusMonth = Math.min(n, focusMonth + 1);
+    else if (e.key === "ArrowLeft") focusMonth = Math.max(1, focusMonth - 1);
+    else return;
+    e.preventDefault();
+    const rect = svg.getBoundingClientRect();
+    showAt(rect.left + (x(focusMonth) / W) * rect.width);
+  });
+  svg.addEventListener("blur", hide);
+}
+
+function seriesColors() {
+  const css = getComputedStyle(document.body);
+  return [css.getPropertyValue("--series-1").trim(), css.getPropertyValue("--series-2").trim()];
+}
+
+function fixedEndMark() {
+  const fm = sched.params.fixedMonths;
+  return fm > 0 && fm < sched.params.termMonths ? [{ m: fm, label: "fixed rate ends" }] : [];
+}
+
+function renderSaleChart() {
+  const [c1, c2] = seriesColors();
+  const p = sched.params;
+  const rows = sched.rows;
+  const gained = rows.map(r => appreciationAt(r.m) + p.rent * r.m);
+  const wasted = rows.map(r => r.cumI + p.costs + p.ownCost * r.m / 12);
+  drawLineChart("chartSale", [
+    { name: "Appreciation + rent", color: c1, values: gained, area: true,
+      endLabel: eur(gained[gained.length - 1]) + " gained" },
+    { name: "Money wasted", color: c2, values: wasted, area: true,
+      endLabel: eur(wasted[wasted.length - 1]) + " wasted" },
+  ], {
+    w: 560,
+    aria: "Property appreciation plus rental income versus money wasted on interest and costs over time",
+    marks: [...fixedEndMark(), { m: p.sellMonths, label: "you sell" }],
+    extraRow: m => {
+      const net = appreciationAt(m) + p.rent * m - (sched.rows[m - 1].cumI + p.costs + p.ownCost * m / 12);
+      return { name: net >= 0 ? "net profit if sold now" : "net loss if sold now", value: eur(net) };
+    }
+  });
+}
+
+function renderSplitChart() {
+  const [c1, c2] = seriesColors();
+  const rows = sched.rows;
+  drawLineChart("chartSplit", [
+    { name: "Principal portion", color: c1, values: rows.map(r => r.principal),
+      endLabel: eur(rows[rows.length - 1].principal) + " principal" },
+    { name: "Interest portion", color: c2, values: rows.map(r => r.interest),
+      endLabel: eur(rows[rows.length - 1].interest) + " interest" },
+  ], {
+    aria: "Monthly payment split between principal and interest",
+    marks: fixedEndMark(),
+    extraRow: m => ({ name: "total payment", value: eur(sched.rows[m - 1].payment) })
+  });
+}
+
+function renderCumChart() {
+  const [c1, c2] = seriesColors();
+  const rows = sched.rows;
+  drawLineChart("chartCum", [
+    { name: "Remaining balance", color: c1, values: rows.map(r => r.bal), area: true,
+      endLabel: "paid off" },
+    { name: "Cumulative interest", color: c2, values: rows.map(r => r.cumI), area: true,
+      endLabel: eur(rows[rows.length - 1].cumI) + " interest" },
+  ], {
+    aria: "Remaining balance and cumulative interest over the loan term",
+    marks: fixedEndMark(),
+    extraRow: m => ({ name: "principal repaid", value: eur(sched.rows[m - 1].cumP) })
+  });
+}
+
+// ---------- Section 2: rent & invest ----------
+let inv = null;
+
+function recalcInvest() {
+  const rent = Math.max(0, +document.getElementById("inRent2").value || 0);
+  const credit = Math.max(0, +document.getElementById("inCredit").value || 0);
+  const lump = Math.max(0, +document.getElementById("inInvest").value || 0);
+  const monthly = Math.max(0, +document.getElementById("inMonthly").value || 0);
+  const ret = Math.max(0, +document.getElementById("inReturn").value || 0);
+  const tax = Math.min(100, Math.max(0, +document.getElementById("inCgt").value || 0));
+  const years = Math.min(40, Math.max(1, +document.getElementById("inHorizon").value || 5));
+  const months = Math.round(years * 12);
+
+  // monthly rate equivalent to the annual rate used for the lump sum: (1+g)^(1/12) − 1
+  const rm = Math.pow(1 + ret / 100, 1 / 12) - 1;
+  const contrib = monthly * months;
+  // future value of end-of-month contributions: c·((1+rm)^M − 1)/rm
+  const monthlyFV = rm === 0 ? contrib : monthly * (Math.pow(1 + rm, months) - 1) / rm;
+  const monthlyGains = monthlyFV - contrib;
+
+  const grossValue = lump * Math.pow(1 + ret / 100, years);
+  const gains = (grossValue - lump) + monthlyGains;
+  const taxDue = Math.max(0, gains) * tax / 100;
+  const cashAfterTax = grossValue + monthlyFV - taxDue;
+  const rentPaid = rent * months;
+  const creditTotal = credit * years;
+  const netResult = (gains - taxDue) - rentPaid + creditTotal;
+  const wasted = Math.max(0, rentPaid - creditTotal) + taxDue;
+
+  inv = { rent, credit, lump, monthly, rm, contrib, monthlyFV, monthlyGains, ret, tax, years, months, grossValue, gains, taxDue, cashAfterTax, rentPaid, creditTotal, netResult, wasted };
+
+  document.getElementById("horizonEcho").textContent = years;
+  renderInvestKpis();
+  renderInvestChart();
+  renderComparison();
+}
+
+function renderInvestKpis() {
+  const tiles = [
+    { label: "Investment value after " + inv.years + " yrs", value: eur(inv.grossValue + inv.monthlyFV), sub: eur(inv.lump) + " lump + " + eur(inv.monthly) + "/mo at " + inv.ret.toFixed(1) + "%/yr, before tax" },
+    { label: "Monthly contributions in", value: eur(inv.contrib), sub: eur(inv.monthly) + "/mo × " + inv.months + " months, grew to " + eur(inv.monthlyFV) },
+    { label: "Tax on gains", value: eur(inv.taxDue), sub: inv.tax.toFixed(0) + "% of " + eur(Math.max(0, inv.gains)) + " gains" },
+    { label: "Cash in hand after tax", value: eur(inv.cashAfterTax), sub: "if you cash out at year " + inv.years },
+    { label: "Rent paid over " + inv.years + " yrs", value: eur(inv.rentPaid), sub: eur(inv.rent) + "/mo × " + inv.months + " months" },
+    { label: "Renter's credit received", value: eur(inv.creditTotal), sub: eur(inv.credit) + "/yr × " + inv.years + " yrs" },
+    { label: "Money wasted (not coming back)", value: eur(inv.wasted), sub: "rent " + eur(inv.rentPaid) + " − credit " + eur(inv.creditTotal) + " + tax " + eur(inv.taxDue) },
+    { label: "Net result", value: (inv.netResult >= 0 ? "▲ " : "▼ ") + eur(Math.abs(inv.netResult)),
+      cls: inv.netResult >= 0 ? "pos" : "neg",
+      sub: "after-tax gains + credit − rent paid" },
+  ];
+  const holder = document.getElementById("investKpis");
+  holder.replaceChildren();
+  for (const t of tiles) {
+    const el = document.createElement("div"); el.className = "tile";
+    const l = document.createElement("div"); l.className = "label"; l.textContent = t.label;
+    const v = document.createElement("div"); v.className = "value" + (t.cls ? " " + t.cls : ""); v.textContent = t.value;
+    const s = document.createElement("div"); s.className = "sub"; s.textContent = t.sub;
+    el.append(l, v, s); holder.appendChild(el);
+  }
+}
+
+function renderInvestChart() {
+  const [c1, c2] = seriesColors();
+  const months = inv.months;
+  const gainsAfterTax = [], rentPaid = [];
+  for (let m = 1; m <= months; m++) {
+    const gLump = inv.lump * (Math.pow(1 + inv.ret / 100, m / 12) - 1);
+    const gMonthly = inv.rm === 0 ? 0 : inv.monthly * (Math.pow(1 + inv.rm, m) - 1) / inv.rm - inv.monthly * m;
+    const g = gLump + gMonthly;
+    gainsAfterTax.push(g - Math.max(0, g) * inv.tax / 100);
+    rentPaid.push(Math.max(0, inv.rent * m - inv.credit * m / 12));
+  }
+  drawLineChart("chartInvest", [
+    { name: "After-tax gains", color: c1, values: gainsAfterTax, area: true,
+      endLabel: eur(gainsAfterTax[months - 1]) + " gained" },
+    { name: "Rent net of credit", color: c2, values: rentPaid, area: true,
+      endLabel: eur(rentPaid[months - 1]) + " rent" },
+  ], {
+    w: 560,
+    aria: "After-tax investment gains versus cumulative rent paid",
+    marks: [],
+    extraRow: m => {
+      const net = gainsAfterTax[m - 1] - rentPaid[m - 1];
+      return { name: "net position", value: eur(net) };
+    }
+  });
+}
+
+// ---------- comparison ----------
+function buyNetResult() {
+  const p = sched.params;
+  const S = p.sellMonths;
+  const r = sched.rows[S - 1];
+  const salePrice = p.value * Math.pow(1 + p.appr / 100, S / 12);
+  const walkAway = salePrice - r.bal;
+  const rentTotal = p.rent * S;
+  const ownPaid = p.ownCost * S / 12;
+  const cashIn = (p.value - p.loan) + (r.cumI + r.cumP) + p.costs + ownPaid;
+  return {
+    years: p.sellYears,
+    net: walkAway + rentTotal - cashIn,
+    wasted: Math.max(0, r.cumI + p.costs + ownPaid - rentTotal),
+    cashOut: walkAway,
+    monthly: sched.fixedPayment - p.rent + p.ownCost / 12,
+  };
+}
+
+function renderComparison() {
+  if (!sched || !inv) return;
+  const A = buyNetResult();
+  const card = document.getElementById("compareCard");
+  card.replaceChildren();
+
+  if (A.years !== inv.years) {
+    const w = document.createElement("div"); w.className = "compare-warn";
+    w.textContent = "⚠ Horizons differ (sell after " + A.years + " yrs vs invest for " + inv.years + " yrs): set them equal for a fair comparison.";
+    card.appendChild(w);
+  }
+
+  const diff = A.net - inv.netResult;
+  const verdict = document.createElement("div"); verdict.className = "verdict";
+  const who = diff >= 0 ? "Buying" : "Renting + investing";
+  verdict.textContent = who + " comes out ahead by ";
+  const amt = document.createElement("span"); amt.className = "amt"; amt.textContent = eur(Math.abs(diff));
+  verdict.appendChild(amt);
+  verdict.appendChild(document.createTextNode(" over " + A.years + " years, with these assumptions."));
+  card.appendChild(verdict);
+
+  const rows = [
+    ["Net result (change in net worth)", A.net, inv.netResult, true],
+    ["Money wasted (not coming back)", A.wasted, inv.wasted, false],
+    ["Cash your asset turns into", A.cashOut, inv.cashAfterTax, false],
+    ["Monthly outlay (housing + investing)", A.monthly, inv.rent - inv.credit / 12 + inv.monthly, false],
+  ];
+  const tbl = document.createElement("table");
+  const head = document.createElement("tr");
+  for (const h of ["", "Buy & sell (Section 1)", "Rent & invest (Section 2)"]) {
+    const th = document.createElement("th"); th.textContent = h; head.appendChild(th);
+  }
+  tbl.appendChild(head);
+  for (const [label, a, b, signed] of rows) {
+    const tr = document.createElement("tr");
+    const td0 = document.createElement("td"); td0.textContent = label; tr.appendChild(td0);
+    for (const v of [a, b]) {
+      const td = document.createElement("td");
+      td.textContent = signed ? (v >= 0 ? "▲ " : "▼ ") + eur(Math.abs(v)) : eur(v);
+      if (signed) td.className = v >= 0 ? "pos" : "neg";
+      tr.appendChild(td);
+    }
+    tbl.appendChild(tr);
+  }
+  card.appendChild(tbl);
+
+  const rentNet = inv.rent - inv.credit / 12;
+  const rentAll = rentNet + inv.monthly;
+  const gap = A.monthly - rentAll;
+  const callout = document.createElement("div"); callout.className = "outlay";
+  const oLabel = document.createElement("div"); oLabel.className = "label";
+  oLabel.textContent = "Monthly outlay while you hold";
+  const oBig = document.createElement("div"); oBig.className = "big";
+  oBig.textContent = eur(A.monthly) + "/mo buying vs " + eur(rentAll) + "/mo renting + investing (" + eur(Math.abs(gap)) + "/mo lighter to " + (gap > 0 ? "rent" : "buy") + ")";
+  const oWhy = document.createElement("div"); oWhy.className = "why";
+  oWhy.textContent = "Buying = mortgage payment during the fixed period − room income + running costs. Renting = rent " + eur(rentNet) + " net of the tax credit + " + eur(inv.monthly) + "/mo invested; those contributions compound at the same return and are counted in Section 2's net result.";
+  callout.append(oLabel, oBig, oWhy);
+  card.appendChild(callout);
+}
+
+// ---------- table ----------
+let monthlyView = false;
+function renderTable() {
+  const tbl = document.getElementById("schedTable");
+  tbl.replaceChildren();
+  const head = document.createElement("tr");
+  const cols = monthlyView
+    ? ["Month", "Payment", "Interest", "Principal", "Cum. interest", "Balance"]
+    : ["Year", "Paid in year", "Interest in year", "Principal in year", "Cum. interest", "Balance at year end"];
+  for (const c of cols) { const th = document.createElement("th"); th.textContent = c; head.appendChild(th); }
+  tbl.appendChild(head);
+  const fm = sched.params.fixedMonths;
+
+  const addRow = (cells, isFixedEnd) => {
+    const tr = document.createElement("tr");
+    if (isFixedEnd) tr.className = "fixed-end";
+    for (const c of cells) { const td = document.createElement("td"); td.textContent = c; tr.appendChild(td); }
+    tbl.appendChild(tr);
+  };
+
+  if (monthlyView) {
+    for (const r of sched.rows) {
+      addRow([r.m, eur(r.payment), eur(r.interest), eur(r.principal), eur(r.cumI), eur(r.bal)], r.m === fm);
+    }
+  } else {
+    let payY = 0, intY = 0, prinY = 0;
+    for (const r of sched.rows) {
+      payY += r.payment; intY += r.interest; prinY += r.principal;
+      if (r.m % 12 === 0 || r.m === sched.rows.length) {
+        const yr = Math.ceil(r.m / 12);
+        addRow([yr, eur(payY), eur(intY), eur(prinY), eur(r.cumI), eur(r.bal)], fm > 0 && Math.ceil(fm / 12) === yr && fm % 12 === 0);
+        payY = intY = prinY = 0;
+      }
+    }
+  }
+}
+
+// ---------- wiring ----------
+for (const id of ["inValue", "inAppr", "inSellYears", "inCosts", "inRent", "inOwnCost", "inLoan", "inTerm", "inRate", "inFixedYears", "inFollowRate"]) {
+  document.getElementById(id).addEventListener("input", recalcAll);
+}
+for (const id of ["inRent2", "inCredit", "inInvest", "inMonthly", "inReturn", "inCgt", "inHorizon"]) {
+  document.getElementById(id).addEventListener("input", recalcInvest);
+}
+document.getElementById("inMonth").addEventListener("input", e => {
+  document.getElementById("inMonthRange").value = e.target.value;
+  renderInspector();
+});
+document.getElementById("inMonthRange").addEventListener("input", e => {
+  document.getElementById("inMonth").value = e.target.value;
+  renderInspector();
+});
+document.getElementById("granBtn").addEventListener("click", e => {
+  monthlyView = !monthlyView;
+  e.target.textContent = monthlyView ? "Show yearly" : "Show monthly";
+  renderTable();
+});
+
+const themeBtn = document.getElementById("themeBtn");
+const themes = ["auto", "light", "dark"];
+let themeIdx = 0;
+themeBtn.addEventListener("click", () => {
+  themeIdx = (themeIdx + 1) % 3;
+  const t = themes[themeIdx];
+  if (t === "auto") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", t);
+  themeBtn.textContent = "Theme: " + t;
+  recalcAll(); // re-read series colors
+});
+
+recalcAll();
+recalcInvest();
+</script>
+</body>
+</html>
